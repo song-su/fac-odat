@@ -1,0 +1,29 @@
+[base]
+dimension = 1
+root_dir = "."
+output_dir = "runs/odatse_W46_v2"
+
+[algorithm]
+name = "mapper"
+
+[algorithm.param]
+mesh_path = "runs/odatse_W46_v2/candidate_mesh.txt"
+
+[solver]
+name = "fac"
+dimension = 1
+target_input = "inputs/target_case_v2.yaml"
+fac_work_dir = "runs/odatse_W46_v2/fac_trials"
+generated_dir = "runs/odatse_W46_v2/generated_fac"
+results_file = "runs/odatse_W46_v2/fac_results.txt"
+summary_file = "runs/odatse_W46_v2/loss_configuration_optimization.txt"
+candidate_table = "runs/odatse_W46_v2/candidate_table.txt"
+
+[runner]
+ignore_error = false
+
+[runner.log]
+filename = "runner.log"
+interval = 1
+write_input = true
+write_result = true

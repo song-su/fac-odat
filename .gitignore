@@ -1,0 +1,22 @@
+# FAC binary output files
+*.en
+*.tr
+*.pot
+*.b.en
+*.b.tr
+*.a.en
+*.a.tr
+
+# Run directories (large FAC outputs)
+runs/
+
+# Generated FAC scripts (reproducible from inputs)
+generated/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Zone identifier files (Windows)
+*:Zone.Identifier

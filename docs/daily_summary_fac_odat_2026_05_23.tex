@@ -1,0 +1,528 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!5}
+}
+
+\title{FAC + ODAT-SE 第一阶段配置搜索流程整理}
+\author{}
+\date{2026-05-23}
+
+\begin{document}
+
+\maketitle
+
+\section{项目背景}
+
+本项目面向 EBIT 实验光谱中高电荷态重元素离子的 UTA
+（unresolved transition array）或 blended peak 归属问题。目标是利用
+FAC 计算给定 configuration 与 radial potential 策略下的能级、跃迁能量、
+A-value 与角动量信息，再由 ODAT-SE 或其前置的搜索流程反演可能的
+configuration 与势优化策略。
+
+FAC 在这里承担顺问题求解器的角色：
+
+\begin{lstlisting}
+configuration + radial potential -> FAC -> levels + transition energies + A-values
+\end{lstlisting}
+
+ODAT-SE 或简化搜索器承担逆问题搜索层的角色：
+
+\begin{lstlisting}
+experimental peak features -> search configuration + potential strategy
+\end{lstlisting}
+
+当前阶段不是完整 CRM 谱拟合，而是第一阶段筛选。其目标是判断一组
+configuration / potential 是否能在实验峰附近产生合理的理论线团。
+
+一个重要限制是，实验峰通常是 UTA 或 blended peak，因此不能假设
+
+\begin{lstlisting}
+one experimental peak = one theoretical transition
+\end{lstlisting}
+
+而应采用
+
+\begin{lstlisting}
+one experimental peak = one theoretical line group
+\end{lstlisting}
+
+此外，FAC 阶段只有 A-value，而真实谱线强度应满足
+
+\[
+I_{ul} \propto N_u A_{ul}.
+\]
+
+其中 $N_u$ 是上能级 population，需要 CRM 才能给出。因此当前阶段
+A-value 只作为 radiative-potential weight，不能当作真实实验强度。
+
+\section{参考 FAC 输入文件}
+
+今天首先阅读了项目中的 \texttt{Bi22.py}，并将其作为当前 FAC 输入脚本的
+标准风格。该文件的主要结构如下：
+
+\begin{itemize}
+  \item 设置元素和电子数，例如 \texttt{Z = 83}, \texttt{K = 61}；
+  \item 使用 \texttt{fac.SetAtom(a)} 设置元素；
+  \item 使用 \texttt{fac.Closed(...)} 指定闭壳层；
+  \item 使用 \texttt{fac.Config(..., group='nX')} 定义 configuration group；
+  \item 使用
+    \texttt{ConfigEnergy(0) -> OptimizeRadial(...) -> ConfigEnergy(1)}
+    生成并修正单中心势；
+  \item 使用 \texttt{Structure} 输出能级；
+  \item 使用 \texttt{TransitionTable} 输出跃迁和 A-value；
+  \item 可选地计算 CE 和 CI 表。
+\end{itemize}
+
+随后阅读了 FAC 手册 \texttt{/home/song/projects/fac-master/doc/manual.tex}。
+其中确认了以下关键点：
+
+\begin{itemize}
+  \item PFAC，即 Python 输入接口，是推荐使用方式；
+  \item \texttt{Config} 支持类似 \texttt{5[s,p,d,f,g]} 的紧凑写法；
+  \item \texttt{OptimizeRadial} 应优先使用最低的一个或两个 configuration group；
+  \item \texttt{MemENTable} 必须在 verbose \texttt{PrintTable(..., 1)} 之前调用；
+  \item \texttt{TransitionTable(fn, low, up, m)} 的第 4 个参数不是
+    ``最大 multipole 阶数''。
+\end{itemize}
+
+FAC 手册和源码确认的 multipole 约定为：
+
+\begin{lstlisting}
+m < 0: electric multipole, e.g. -1 = E1
+m > 0: magnetic multipole, e.g. +1 = M1
+m = 0 or omitted: sum allowed multipoles
+\end{lstlisting}
+
+因此 \texttt{+3} 表示 M3，不表示 E1/E2/E3/M1/M2/M3 全部计算。若希望
+汇总到三阶 electric 与 magnetic multipoles，目前采用：
+
+\begin{lstlisting}[language=Python]
+fac.SetTransitionMaxE(3)
+fac.SetTransitionMaxM(3)
+fac.TransitionTable(..., 0)
+\end{lstlisting}
+
+\section{目标输入文件设计}
+
+今天建立并多次修改了主输入文件：
+
+\begin{lstlisting}
+inputs/target_case.yaml
+\end{lstlisting}
+
+该文件不是 FAC 直接输入文件，而是用户编辑的上游配置文件。它包含：
+
+\begin{itemize}
+  \item 实验参考峰；
+  \item 元素、原子序数、价态和电子数；
+  \item FAC 固定设置；
+  \item configuration 生成规则；
+  \item \texttt{OptimizeRadial} 策略；
+  \item 搜索和评分参数。
+\end{itemize}
+
+当前示例为 W46+：
+
+\begin{lstlisting}
+ion:
+  element: "W"
+  Z: 74
+  charge_state: 46
+  K: 28
+\end{lstlisting}
+
+即 Ni-like tungsten，28 个束缚电子。
+
+参考峰为：
+
+\begin{lstlisting}
+5.69 nm
+5.87 nm
+\end{lstlisting}
+
+FAC 的 \texttt{.tr} 文件中输出的是跃迁能量，因此需要在波长和能量之间转换：
+
+\[
+E[\mathrm{eV}] =
+\frac{12398.419843320026}{\lambda[\mathrm{\AA}]}.
+\]
+
+反向转换为：
+
+\[
+\lambda[\mathrm{\AA}] =
+\frac{12398.419843320026}{E[\mathrm{eV}]}.
+\]
+
+对应当前两个参考峰：
+
+\begin{align}
+5.69~\mathrm{nm} &\approx 217.8984~\mathrm{eV},\\
+5.87~\mathrm{nm} &\approx 211.2167~\mathrm{eV}.
+\end{align}
+
+\section{Configuration 模板}
+
+用户希望不要在输入文件中逐条写展开后的 FAC configuration，而是写成更接近
+物理记号的形式。例如：
+
+\begin{lstlisting}
+3p6 3d9 nl, n = 4,5,6; l = 0-4
+\end{lstlisting}
+
+因此今天设计了 \texttt{configuration\_space.templates}。当前 W46+ 示例为：
+
+\begin{lstlisting}
+configuration_space:
+  templates:
+    bound:
+      - id: "ground_3p6_3d10"
+        prefix: "3p6 3d10"
+        active: null
+        required: true
+      - id: "hole_3d9_nl"
+        prefix: "3p6 3d9"
+        active: "nl"
+        n: [4, 5, 6]
+        l: [0, 1, 2, 3, 4]
+        occupancy: 1
+        required: false
+      - id: "hole_3p5_3d10_nl"
+        prefix: "3p5 3d10"
+        active: "nl"
+        n: [4, 5, 6]
+        l: [0, 1, 2, 3, 4]
+        occupancy: 1
+        required: false
+\end{lstlisting}
+
+生成器会将其展开为 FAC 可读形式。例如：
+
+\begin{lstlisting}[language=Python]
+fac.Config('3p6 3d10', group='n2')
+fac.Config('3p6 3d9 4[s,p,d,f]', group='n3')
+fac.Config('3p6 3d9 5[s,p,d,f,g]', group='n4')
+fac.Config('3p6 3d9 6[s,p,d,f,g]', group='n5')
+fac.Config('3p5 3d10 4[s,p,d,f]', group='n6')
+fac.Config('3p5 3d10 5[s,p,d,f,g]', group='n7')
+fac.Config('3p5 3d10 6[s,p,d,f,g]', group='n8')
+\end{lstlisting}
+
+今天特别修正了一个物理约束：对于电子轨道，必须满足
+
+\[
+l \le n - 1.
+\]
+
+因此不存在 \texttt{4g}。当输入为 \texttt{n=4, l=0-4} 时，实际只生成
+\texttt{4[s,p,d,f]}。
+
+\section{FAC 输入生成脚本}
+
+今天创建了 FAC 输入生成脚本：
+
+\begin{lstlisting}
+scripts/generate_fac_input.py
+\end{lstlisting}
+
+该脚本读取 \texttt{inputs/target\_case.yaml}，展开 configuration 模板，
+生成类似 \texttt{Bi22.py} 的 PFAC 输入文件。例如：
+
+\begin{lstlisting}
+python3 scripts/generate_fac_input.py inputs/target_case.yaml -o generated/W46_phase1.py
+\end{lstlisting}
+
+生成的示例文件为：
+
+\begin{lstlisting}
+generated/W46_phase1.py
+\end{lstlisting}
+
+其核心流程为：
+
+\begin{lstlisting}[language=Python]
+fac.SetAtom(a)
+SetUTA(0)
+fac.Closed(...)
+fac.Config(...)
+
+fac.ConfigEnergy(0)
+fac.OptimizeRadial([...])
+fac.ConfigEnergy(1)
+fac.GetPotential(...)
+
+fac.Structure(...)
+fac.MemENTable(...)
+fac.PrintTable(..., 1)
+
+fac.SetTransitionMaxE(3)
+fac.SetTransitionMaxM(3)
+fac.TransitionTable(..., 0)
+fac.PrintTable(..., 1)
+\end{lstlisting}
+
+\section{OptimizeRadial 当前处理}
+
+\texttt{OptimizeRadial} 是后续很复杂的问题，目前暂时固定使用基态：
+
+\begin{lstlisting}
+radial_potential:
+  optimize_radial_groups: ["ground_3p6_3d10"]
+\end{lstlisting}
+
+生成器会将语义 ID 映射成实际 FAC group。例如：
+
+\begin{lstlisting}
+ground_3p6_3d10 -> n2
+\end{lstlisting}
+
+最终生成：
+
+\begin{lstlisting}[language=Python]
+fac.OptimizeRadial(['n2'])
+\end{lstlisting}
+
+这只是第一版保守策略。以后需要将 \texttt{OptimizeRadial} 纳入搜索变量，例如：
+
+\begin{itemize}
+  \item ground only；
+  \item ground + low excited group；
+  \item 3d-hole family；
+  \item 3p-hole family；
+  \item weighted mean configuration；
+  \item 不同 potential strategy。
+\end{itemize}
+
+\section{Configuration 搜索流程}
+
+用户指出，仅仅将输入 configuration 映射成 FAC 输入文件还不够，需要循环寻找
+最佳 configuration。因此今天创建了搜索脚本：
+
+\begin{lstlisting}
+scripts/run_configuration_search.py
+\end{lstlisting}
+
+当前搜索器还不是完整 ODAT-SE，而是一个可工作的 template-subset grid search。
+运行方式：
+
+\begin{lstlisting}
+python3 scripts/run_configuration_search.py inputs/target_case.yaml --clean
+\end{lstlisting}
+
+搜索器执行以下步骤：
+
+\begin{enumerate}
+  \item 保留 \texttt{required: true} 的模板；
+  \item 枚举 \texttt{required: false} 模板的开关组合；
+  \item 为每个 trial 临时生成 PFAC 脚本；
+  \item 在独立目录运行 FAC；
+  \item 解析 ASCII \texttt{.tr} 文件；
+  \item 对参考峰附近的理论线团评分；
+  \item 将结果写入 CSV。
+\end{enumerate}
+
+当前 W46+ 示例中，基态模板为 required，两个 \texttt{nl} family 为 optional，
+因此第一版搜索尝试四种组合：
+
+\begin{lstlisting}
+ground only
+ground + 3p5 3d10 nl
+ground + 3p6 3d9 nl
+ground + both nl families
+\end{lstlisting}
+
+搜索结果输出为：
+
+\begin{lstlisting}
+runs/search_W46/results.csv
+\end{lstlisting}
+
+为了避免大量 configuration 时生成大量 \texttt{.py} 文件，今天修改为默认不保留
+每个 trial 的 Python 输入脚本，而是使用临时文件运行后删除。若调试需要，可在
+YAML 中设置：
+
+\begin{lstlisting}
+search:
+  keep_generated_scripts: true
+\end{lstlisting}
+
+\section{评分方式：能量与波长两种窗口}
+
+FAC 的 \texttt{.tr} 文件中记录 transition energy，单位为 eV。但实验峰通常以
+波长给出。因此今天将评分窗口设计为可选：
+
+\begin{lstlisting}
+search:
+  scoring:
+    window_space: "wavelength"
+    energy_window_eV: 8.0
+    wavelength_window:
+      value: 0.1
+      unit: "nm"
+\end{lstlisting}
+
+若 \texttt{window\_space = "wavelength"}，则对每个参考峰筛选满足：
+
+\[
+|\lambda_i - \lambda_{\mathrm{peak}}| \le 0.1~\mathrm{nm}
+\]
+
+的 FAC 跃迁线。每条线的波长由其能量反算得到：
+
+\[
+\lambda_i[\mathrm{\AA}] =
+\frac{12398.419843320026}{E_i[\mathrm{eV}]}.
+\]
+
+若 \texttt{window\_space = "energy"}，则使用：
+
+\[
+|E_i - E_{\mathrm{peak}}| \le \Delta E.
+\]
+
+例如：
+
+\begin{lstlisting}
+window_space: "energy"
+energy_window_eV: 8.0
+\end{lstlisting}
+
+当前两种方式都保留，用户可在 YAML 中切换。
+
+\section{当前 Loss}
+
+对每个实验参考峰，窗口内所有理论跃迁构成一个 theoretical line group。
+
+当前使用 A-value 或 rate 加权计算线团中心：
+
+\[
+E_{\mathrm{grp}} =
+\frac{\sum_i E_i A_i}{\sum_i A_i},
+\]
+
+\[
+\lambda_{\mathrm{grp}} =
+\frac{\sum_i \lambda_i A_i}{\sum_i A_i}.
+\]
+
+当前简化 loss 为：
+
+\[
+L \mathrel{+}= r^2 - \log\left(\sum_i A_i + \epsilon\right),
+\]
+
+其中 $r$ 根据评分空间不同取：
+
+\[
+r = E_{\mathrm{grp}} - E_{\mathrm{peak}}
+\]
+
+或
+
+\[
+r = \lambda_{\mathrm{grp}} - \lambda_{\mathrm{peak}}.
+\]
+
+若某个参考峰窗口内没有理论线，则加入大的 missing penalty：
+
+\begin{lstlisting}
+missing_peak_penalty: 1000000.0
+\end{lstlisting}
+
+数值下限为：
+
+\begin{lstlisting}
+rate_floor: 1.0e-99
+\end{lstlisting}
+
+搜索结果中同时记录能量和波长空间的中心与残差：
+
+\begin{itemize}
+  \item \texttt{center\_eV}
+  \item \texttt{center\_nm}
+  \item \texttt{residual\_eV}
+  \item \texttt{residual\_nm}
+\end{itemize}
+
+\section{Python 环境}
+
+今天检查了 Python 环境。系统 Python 为：
+
+\begin{lstlisting}
+/usr/bin/python3
+\end{lstlisting}
+
+该环境可以 import \texttt{pfac} 和 \texttt{yaml}，但最初没有
+\texttt{numpy/scipy/pandas}。随后为系统 Python 安装并验证：
+
+\begin{lstlisting}
+numpy 2.4.6
+scipy 1.17.1
+pandas 3.0.3
+\end{lstlisting}
+
+同时确认：
+
+\begin{lstlisting}
+pfac /home/song/projects/fac-master/_install/local/lib/python3.12/dist-packages/pfac/__init__.py
+\end{lstlisting}
+
+\section{新增和修改的文件}
+
+今天主要新增或修改了以下文件：
+
+\begin{itemize}
+  \item \texttt{inputs/target\_case.yaml}: 主输入配置文件；
+  \item \texttt{scripts/generate\_fac\_input.py}: YAML 到 PFAC 输入脚本生成器；
+  \item \texttt{scripts/run\_configuration\_search.py}: configuration 搜索和评分脚本；
+  \item \texttt{generated/W46\_phase1.py}: 由当前 YAML 生成的单次 FAC 输入示例；
+  \item \texttt{docs/run\_generation.md}: 运行说明；
+  \item \texttt{docs/claude\_method\_review.md}: 给 Claude 评价方法用的完整说明；
+  \item \texttt{docs/daily\_summary\_fac\_odat\_2026\_05\_23.tex}: 本总结文档。
+\end{itemize}
+
+\section{当前已知限制}
+
+当前方法仍是第一阶段骨架，主要限制包括：
+
+\begin{enumerate}
+  \item 还不是完整 ODAT-SE，只是 template-subset grid search；
+  \item 搜索空间目前只支持 optional template 的开关组合；
+  \item \texttt{OptimizeRadial} 暂时固定为基态；
+  \item loss 还没有引入 global energy shift 或 wavelength shift；
+  \item loss 还没有显式使用实验峰宽、峰面积或不确定度；
+  \item 当前窗口是 hard window，未来应考虑 Gaussian soft window；
+  \item A-value 加权线团中心可能因缺少 population 而有偏；
+  \item 尚未包含 CRM population、cascade 或 ion abundance；
+  \item 大 configuration set 下 FAC 计算成本可能很高，尚未实现缓存和剪枝；
+  \item 不同 configuration 数量的模型之间需要额外复杂度惩罚，否则大模型天然产生更多线。
+\end{enumerate}
+
+\section{后续建议}
+
+下一步建议包括：
+
+\begin{enumerate}
+  \item 先运行当前 W46+ 四个 trial，检查 FAC 是否稳定完成；
+  \item 解析 \texttt{results.csv}，人工查看两个参考峰附近的候选线团；
+  \item 将 hard window 改成基于实验峰宽的 Gaussian soft weighting；
+  \item 加入 global shift consistency；
+  \item 加入模型复杂度惩罚；
+  \item 扩展搜索空间，使 $n$、$l$、configuration family 和
+    \texttt{OptimizeRadial} strategy 都能作为搜索变量；
+  \item 在少量 top candidates 上做简单 Gaussian convolution 验证；
+  \item 最后再进入 CRM 完整验证。
+\end{enumerate}
+
+\end{document}

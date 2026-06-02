@@ -1,0 +1,9 @@
+你现在是我的本地 Codex 助手。请读取 docs/codex_context.md。
+
+本项目目标：
+用 FAC 作为 forward solver，给定 configuration 和 potential，计算能级、跃迁能量、A-value 和 J；
+用 ODAT-SE 作为 inverse solver，搜索最能解释 EBIT 实验 UTA 峰团的 configuration 与 potential；
+第一阶段不做完整 CRM，而是用峰团中心、(2J+1)A 辐射潜力、global shift 一致性作为 loss；
+最后只对 top candidates 做 CRM 和完整光谱验证。
+
+请基于这个框架回答我的代码实现问题。

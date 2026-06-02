@@ -1,0 +1,179 @@
+# FAC + ODAT-SE phase-1 target input.
+# This file records the physical target and the FAC-script choices needed to
+# generate a lightweight input following the style of Bi22.py.
+
+target:
+  reference_peaks:
+    - id: "peak_5p69nm"
+      wavelength:
+        value: 5.69
+        # Allowed: "angstrom" or "nm".
+        unit: "nm"
+      wavelength_angstrom:
+        value: null
+        unit: "angstrom"
+        derived_from_wavelength: true
+      energy:
+        value: null
+        unit: "eV"
+        derived_from_wavelength_angstrom: true
+    - id: "peak_5p87nm"
+      wavelength:
+        value: 5.87
+        unit: "nm"
+      wavelength_angstrom:
+        value: null
+        unit: "angstrom"
+        derived_from_wavelength: true
+      energy:
+        value: null
+        unit: "eV"
+        derived_from_wavelength_angstrom: true
+  # Optional; useful when the experimental peak width is known.
+  width:
+    value: null
+    # Allowed: "angstrom" or "nm".
+    unit: "nm"
+    kind: "fwhm"
+  width_angstrom:
+    value: null
+    unit: "angstrom"
+    derived_from_width: true
+  energy_width:
+    value: null
+    unit: "eV"
+    derived_from_width_angstrom: true
+  conversion:
+    hc_eV_angstrom: 12398.419843320026
+    nm_to_angstrom: 10.0
+    screening_space: "energy_eV"
+
+ion:
+  element: "W"
+  Z: 74
+  charge_state: 46
+  K: 28
+  # K is the number of bound electrons; charge_state = Z - K.
+
+fac_input:
+  reference_style: "Bi22.py"
+  output_prefix: "W28"
+  potential_file: "W46.pot"
+  use_openmp:
+    enabled: true
+    nproc: 10
+  set_uta: 0
+  closed_shells: ["1s", "2s", "2p", "3s"]
+
+configuration_space:
+  # Configurations are generated per trial, then injected into the FAC script.
+  # Use templates for compact rules such as:
+  #   prefix = "4d10 4f14", active = "nl", n = [5, 6], l = [0, 1, 2, 3, 4]
+  # which expands to:
+  #   4d10 4f14 5[s,p,d,f,g]
+  #   4d10 4f14 6[s,p,d,f,g]
+  mode: "iterative_templates"
+  candidate_files: []
+  selected_candidate_ids: []
+  generated_group_prefix:
+    bound: "n"
+    ionization: "i"
+  include_ionization_groups: false
+  max_bound_groups_per_trial: null
+  templates:
+    # Example:
+    # bound:
+    #   - id: "closed_4f14_nl"
+    #     prefix: "4d10 4f14"
+    #     active: "nl"
+    #     n: [5, 6]
+    #     l: [0, 1, 2, 3, 4]
+    #     occupancy: 1
+    #     required: true
+    bound:
+      - id: "ground_3p6_3d10"
+        prefix: "3p6 3d10"
+        active: null
+        required: true
+      - id: "hole_3d9_nl"
+        prefix: "3p6 3d9"
+        active: "nl"
+        n: [4, 5, 6, 7]
+        l: [0, 1, 2, 3, 4, 5, 6]
+        occupancy: 1
+        required: false
+      - id: "hole_3p5_3d10_nl"
+        prefix: "3p5 3d10"
+        active: "nl"
+        n: [4, 5, 6, 7]
+        l: [0, 1, 2, 3, 4, 5, 6]
+        occupancy: 1
+        required: false
+    ionization: []
+  manual_fac_configs:
+    # Optional escape hatch for already-expanded FAC config strings.
+    bound: []
+    ionization: []
+  l_symbol_map:
+    0: "s"
+    1: "p"
+    2: "d"
+    3: "f"
+    4: "g"
+    5: "h"
+    6: "i"
+
+radial_potential:
+  # These may refer to generated group names such as n2/n3, or to semantic
+  # labels supplied by the candidate configuration file.
+  optimize_radial_groups: ["ground_3p6_3d10"]
+  save_potential: true
+
+search:
+  enabled: true
+  method: "template_subset_grid"
+  max_trials: null
+  require_all_required_templates: true
+  vary_optional_templates: true
+  run_fac: true
+  keep_generated_scripts: true
+  timeout_seconds_per_trial: null
+  work_dir: "runs/search_W46"
+  generated_dir: "generated/search_W46"
+  results_file: "runs/search_W46/results.csv"
+  scoring:
+    # Allowed: "energy" or "wavelength".
+    window_space: "wavelength"
+    energy_window_eV: 8.0
+    wavelength_window:
+      value: 0.1
+      unit: "nm"
+    missing_peak_penalty: 1000000.0
+    use_rate_weighted_center: true
+    rate_floor: 1.0e-99
+
+calculation_steps:
+  stage: "fac_line_group_screening"
+  purpose: "Find FAC line groups near the experimental blended peak."
+  run_structure: true
+  run_transition_table: true
+  run_excitation_cross_section: false
+  run_ionization_cross_section: false
+  transition_table:
+    # FAC manual: m < 0 means electric multipole, m > 0 means magnetic
+    # multipole, abs(m) is the rank; m = 0/default sums all multipoles.
+    # Use -1 for E1 if a pure E1 table is desired.
+    fac_multipole: 0
+    max_electric_rank_when_summing: 3
+    max_magnetic_rank_when_summing: 3
+    # If separate A-values by multipole are needed, run separate tables with:
+    # [-1, 1, -2, 2, -3, 3] for E1, M1, E2, M2, E3, M3.
+    separate_multipole_tables: false
+    lower_groups: "all_bound"
+    upper_groups: "all_bound"
+  ce_grid_eV: []
+  ci_grid_eV: []
+
+notes:
+  - "The target peak is treated as a UTA/blended peak, not a single transition."
+  - "A-values are used only as radiative-potential weights, not as experimental intensities."

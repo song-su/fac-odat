@@ -1,0 +1,296 @@
+# FAC + ODAT-SE phase-1 target input (v2)
+#
+# Changes from v1:
+#   1. Per-peak fwhm_eV enables Gaussian soft weighting.
+#   2. Global energy shift is analytically optimized per trial.
+#   3. Radiative weight changed from A to (2J+1)*A.
+#   4. Model complexity penalty prevents large models from winning by size.
+#   5. OptimizeRadial strategy is now a search variable.
+#   6. Anchor vs ambiguous peak classification.
+
+# ---------------------------------------------------------------------------
+# Experimental target
+# ---------------------------------------------------------------------------
+
+target:
+  reference_peaks:
+    - id: "peak_5p69A"
+      wavelength:
+        value: 5.69
+        unit: "angstrom"
+      # Experimental peak width.  Set from actual measurement.
+      # sigma_eV is derived as fwhm_eV / 2.355 when left null.
+      fwhm_eV: 3.0     # TODO: replace with measured FWHM
+      sigma_eV: null   # derived from fwhm_eV if null
+      # anchor: strong constraint on position (simple line structure nearby).
+      # ambiguous: weak constraint (blended, population-sensitive).
+      type: "anchor"
+    - id: "peak_5p87A"
+      wavelength:
+        value: 5.87
+        unit: "angstrom"
+      fwhm_eV: 3.0     # TODO: replace with measured FWHM
+      sigma_eV: null
+      type: "anchor"
+    - id: "peak_7p0262A"
+      wavelength:
+        value: 7.0262
+        unit: "angstrom"
+      fwhm_eV: 3.0     # TODO: replace with measured FWHM
+      sigma_eV: null
+      type: "anchor"
+    - id: "peak_7p1733A"
+      wavelength:
+        value: 7.1733
+        unit: "angstrom"
+      fwhm_eV: 3.0     # TODO: replace with measured FWHM
+      sigma_eV: null
+      type: "anchor"
+    - id: "peak_7p9280A"
+      wavelength:
+        value: 7.9280
+        unit: "angstrom"
+      fwhm_eV: 3.0     # TODO: replace with measured FWHM
+      sigma_eV: null
+      type: "anchor"
+  conversion:
+    hc_eV_angstrom: 12398.419843320026
+    nm_to_angstrom: 10.0
+
+# ---------------------------------------------------------------------------
+# Ion
+# ---------------------------------------------------------------------------
+
+ion:
+  element: "W"
+  Z: 74
+  charge_state: 46
+  K: 28
+  # K is the number of bound electrons; charge_state = Z - K.
+
+# ---------------------------------------------------------------------------
+# FAC input settings
+# ---------------------------------------------------------------------------
+
+fac_input:
+  reference_style: "Bi22.py"
+  output_prefix: "W28"
+  potential_file: "W46.pot"
+  use_openmp:
+    enabled: false
+    nproc: 16
+  set_uta: 0
+  closed_shells: ["1s", "2s", "2p", "3s"]
+
+# ---------------------------------------------------------------------------
+# Configuration space
+# ---------------------------------------------------------------------------
+
+configuration_space:
+  mode: "iterative_templates"
+  generated_group_prefix:
+    bound: "n"
+    ionization: "i"
+  include_ionization_groups: false
+  templates:
+    bound:
+      - id: "ground_3p6_3d10"
+        prefix: "3p6 3d10"
+        active: null
+        required: true
+      - id: "hole_3d9_nl"
+        prefix: "3p6 3d9"
+        active: "nl"
+        n: [4, 5, 6, 7]
+        l: [0, 1, 2, 3, 4, 5, 6]
+        occupancy: 1
+        required: false
+      - id: "hole_3p5_3d10_nl"
+        prefix: "3p5 3d10"
+        active: "nl"
+        n: [4, 5, 6, 7]
+        l: [0, 1, 2, 3, 4, 5, 6]
+        occupancy: 1
+        required: false
+      - id: "hole_3d8_4s2"
+        prefix: "3p6 3d8 4s2"
+        active: null
+        required: false
+      - id: "hole_3p5_3d9_4s2"
+        prefix: "3p5 3d9 4s2"
+        active: null
+        required: false
+    ionization: []
+  l_symbol_map:
+    0: "s"
+    1: "p"
+    2: "d"
+    3: "f"
+    4: "g"
+    5: "h"
+    6: "i"
+
+# ---------------------------------------------------------------------------
+# Radial potential: OptimizeRadial is now a search variable
+# ---------------------------------------------------------------------------
+
+radial_potential:
+  # The search runner tries each strategy in this list.
+  # Strategies that reference a template not active in a given trial are skipped.
+  optimize_radial_strategies:
+    - id: "ground_only"
+      groups: ["ground_3p6_3d10"]
+      description: "Optimize on ground configuration only (safe default)"
+    - id: "ground_plus_3d_hole"
+      groups: ["ground_3p6_3d10", "hole_3d9_nl"]
+      description: "Optimize on ground + 3d-hole family"
+      requires_templates: ["hole_3d9_nl"]
+    - id: "ground_plus_3p_hole"
+      groups: ["ground_3p6_3d10", "hole_3p5_3d10_nl"]
+      description: "Optimize on ground + 3p-hole family"
+      requires_templates: ["hole_3p5_3d10_nl"]
+    - id: "ground_plus_3d8_4s2"
+      groups: ["ground_3p6_3d10", "hole_3d8_4s2"]
+      description: "Optimize on ground + 3d8 4s2 configuration"
+      requires_templates: ["hole_3d8_4s2"]
+    - id: "ground_plus_3p5_3d9_4s2"
+      groups: ["ground_3p6_3d10", "hole_3p5_3d9_4s2"]
+      description: "Optimize on ground + 3p5 3d9 4s2 configuration"
+      requires_templates: ["hole_3p5_3d9_4s2"]
+  save_potential: true
+
+# ---------------------------------------------------------------------------
+# Global energy shift
+# ---------------------------------------------------------------------------
+
+global_shift:
+  # FAC systematically underestimates transition energies for heavy ions
+  # due to missing correlation effects.  This shift is the single most
+  # important fix over v1.
+  enabled: true
+  # Analytical mode: for each trial, compute the optimal shift as
+  #   E_shift = mean_k( E_k^exp - E_k^grp )
+  # This is exact for a least-squares position term and requires no scan.
+  optimize_analytically: true
+  # Sanity bound: if the analytically derived shift falls outside this range,
+  # the trial is flagged as unphysical and assigned a large penalty instead.
+  sanity_range_eV: [-12.0, 12.0]
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+
+search:
+  enabled: true
+  method: "grid_search"
+  require_all_required_templates: true
+  vary_optional_templates: true
+  # Also loop over OptimizeRadial strategies (new in v2).
+  vary_optimize_radial_strategies: true
+  run_fac: true
+  keep_generated_scripts: true
+  timeout_seconds_per_trial: null
+  work_dir: "runs/search_W46_v2"
+  generated_dir: "generated/search_W46_v2"
+  results_file: "runs/search_W46_v2/results.txt"
+  stop_on_configuration:
+    enabled: false
+    # Stop as soon as the known-correct template combination appears.
+    # This is an exact match: extra optional templates do not count as correct.
+    exact_template_ids:
+      - "ground_3p6_3d10"
+      - "hole_3d9_nl"
+      - "hole_3p5_3d10_nl"
+  forward_selection:
+    # At each round, try current best + one remaining optional template.
+    # Accept the best candidate only when loss improves by at least this amount.
+    min_loss_improvement: 0.0
+    max_rounds: null
+
+  scoring:
+    # Gaussian soft weighting replaces hard window.
+    # Weight for line i near peak k:
+    #   w_ik = (2 J_u,i + 1) * A_i * exp( -(E_i + E_shift - E_k^exp)^2 / (2 sigma_k^2) )
+    use_gaussian_soft_window: true
+
+    # Hard pre-filter applied before computing Gaussian weights.
+    # Keeps only lines within this distance of any peak center.
+    # Recommended: ~3-4 times the widest peak sigma.
+    prefilter_window_eV: 15.0
+
+    # Radiative potential weight formula.
+    # "(2J+1)*A" includes upper-level statistical weight; better than "A" alone.
+    radiative_weight: "(2J+1)*A"
+
+    # Numerical floor added inside log to avoid log(0).
+    rate_floor: 1.0e-99
+
+# ---------------------------------------------------------------------------
+# Loss function
+# ---------------------------------------------------------------------------
+
+loss:
+  # Total loss:
+  #   L = w_pos * sum_k[ weight_k * r_k^2 ]
+  #     - w_str * sum_k[ weight_k * log(S_k + floor) ]
+  #     + complexity_penalty * N_active_optional
+  #     + missing_peak_penalty * N_missing
+  #
+  # where:
+  #   r_k     = E_k^exp - E_k^grp  (after applying E_shift)
+  #   S_k     = sum_i w_ik          (total radiative potential in peak k)
+  #   weight_k = anchor_weight or ambiguous_weight depending on peak type
+
+  position_weight: 1.0
+  strength_weight: 1.0
+
+  # Per-peak type weights (see reference_peaks[].type above).
+  anchor_weight: 1.0
+  ambiguous_weight: 0.3
+
+  # Complexity penalty: added once per active optional template.
+  # Prevents models with more configurations from winning purely by
+  # producing more lines.  Tune so that one extra template costs roughly
+  # as much as a ~1-2 eV position error on a single peak.
+  complexity:
+    enabled: true
+    per_optional_template: 2.0   # same units as position_weight * r^2 [eV^2]
+
+  # Applied when no line falls within the pre-filter window for a peak.
+  missing_peak_penalty: 1000000.0
+
+# ---------------------------------------------------------------------------
+# FAC calculation steps
+# ---------------------------------------------------------------------------
+
+calculation_steps:
+  stage: "fac_line_group_screening"
+  purpose: "Find FAC line groups near the experimental blended peaks."
+  run_structure: true
+  run_transition_table: true
+  run_excitation_cross_section: false
+  run_ionization_cross_section: false
+  transition_table:
+    # m=0: sum all multipoles up to max_electric_rank and max_magnetic_rank.
+    fac_multipole: 0
+    max_electric_rank_when_summing: 3
+    max_magnetic_rank_when_summing: 3
+    separate_multipole_tables: false
+    lower_groups: "all_bound"
+    upper_groups: "all_bound"
+  ce_grid_eV: []
+  ci_grid_eV: []
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+
+notes:
+  - "v2: Gaussian soft weighting replaces hard window."
+  - "v2: Global shift is analytically optimized per trial (not scanned)."
+  - "v2: Radiative weight is (2J+1)*A, not A alone."
+  - "v2: Complexity penalty guards against large-model bias."
+  - "v2: OptimizeRadial strategy is now looped over as a search variable."
+  - "v2: Anchor/ambiguous classification controls peak contribution to loss."
+  - "A-values are used only as radiative-potential weights, not as true intensities."
+  - "Peak sigma values are placeholders; replace fwhm_eV with measured values."

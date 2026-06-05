@@ -31,6 +31,25 @@ def expand_l_symbols(l_values, l_symbol_map, n_value=None):
     return symbols
 
 
+def _active_group_by(template, principal_key, angular_key):
+    group_by = template.get("group_by", principal_key)
+    aliases = {
+        "principal": principal_key,
+        "n": "n",
+        "m": "m",
+        "angular": angular_key,
+        "l": "l",
+        "k": "k",
+    }
+    group_by = aliases.get(str(group_by).strip().lower(), group_by)
+    if group_by not in (principal_key, angular_key):
+        raise ValueError(
+            f"Unsupported group_by={template.get('group_by')!r} in {template['id']}; "
+            f"use {principal_key!r} or {angular_key!r}"
+        )
+    return group_by
+
+
 def expand_template(template, l_symbol_map):
     prefix = template["prefix"].strip()
     active = template.get("active")
@@ -45,14 +64,20 @@ def expand_template(template, l_symbol_map):
     occ_suffix = "" if occupancy in (None, 1) else str(occupancy)
     principal_key = "n" if active == "nl" else "m"
     angular_key = "l" if active == "nl" else "k"
+    group_by = _active_group_by(template, principal_key, angular_key)
 
     for n_value in template[principal_key]:
         l_symbols = expand_l_symbols(template[angular_key], l_symbol_map, n_value=n_value)
         if not l_symbols:
             raise ValueError(f"No valid l values remain for n={n_value} in {template['id']}")
-        l_part = ",".join(l_symbols)
-        config = f"{prefix} {n_value}[{l_part}]{occ_suffix}"
-        configs.append((template["id"], config))
+        if group_by == angular_key:
+            for l_symbol in l_symbols:
+                config = f"{prefix} {n_value}{l_symbol}{occ_suffix}"
+                configs.append((template["id"], config))
+        else:
+            l_part = ",".join(l_symbols)
+            config = f"{prefix} {n_value}[{l_part}]{occ_suffix}"
+            configs.append((template["id"], config))
     return configs
 
 

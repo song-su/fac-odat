@@ -293,6 +293,9 @@ def _normalize_configuration(entry, index, used_ids):
         "required": data.get("required", index == 0),
         "tags": sorted(tags),
     }
+    group_by = data.get("group_by", globals().get("ACTIVE_GROUP_BY", {}).get(active))
+    if group_by is not None:
+        template["group_by"] = group_by
     if active == "nl":
         template["n"] = list(data.get("n", DEFAULT_NL["n"]))
         template["l"] = list(data.get("l", DEFAULT_NL["l"]))

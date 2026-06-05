@@ -78,6 +78,14 @@ DEFAULT_NL = {
     "occupancy": 1,
 }
 
+# Active-orbital grouping for generated FAC groups in the same input:
+#   nl: "n" keeps 5[s,p,d,f] together; "l" splits 5s, 5p, 5d, 5f.
+#   mk: "m" keeps m[...] together; "k" splits each m/k subshell.
+ACTIVE_GROUP_BY = {
+    "nl": "n",
+    "mk": "m",
+}
+
 CONFIGURATIONS = [
     {
         "config": "4p6 4d10",
@@ -93,6 +101,7 @@ CONFIGURATIONS = [
     },
     {
         "config": "4p6 4d9 nl",
+        "group_by": ACTIVE_GROUP_BY["nl"],
         "required": True,
         "optimize_radial": True,
         "optimize_radial_base": True,   # survey winner: ground_plus_4d9_nl
@@ -105,6 +114,7 @@ CONFIGURATIONS = [
     },
     {
         "config": "4p5 4d10 5l",
+        "group_by": ACTIVE_GROUP_BY["nl"],
         "required": True,
         "optimize_radial": False,
     },
@@ -336,6 +346,9 @@ def _normalize_configuration(entry, index, used_ids):
         "potential_label": data.get("potential_label"),
         "tags": sorted(tags),
     }
+    group_by = data.get("group_by", ACTIVE_GROUP_BY.get(active))
+    if group_by is not None:
+        template["group_by"] = group_by
     if active == "nl":
         template["n"] = [int(_fixed_nl.group(1))] if _fixed_nl else list(data.get("n", DEFAULT_NL["n"]))
         template["l"] = list(data.get("l", DEFAULT_NL["l"]))

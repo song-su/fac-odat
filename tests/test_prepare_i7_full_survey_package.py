@@ -12,14 +12,14 @@ from prepare_i7_full_survey_package import prepare_package
 
 class PrepareI7FullSurveyPackageTests(unittest.TestCase):
     def test_generates_all_template_combinations_for_both_grouping_modes(self):
-        config = load_config(Path("inputs/target_case_v4_I_survey.py"))
+        config = load_config(Path("survey/configs/i7plus_fac.py"))
 
         with TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir) / "package"
             metadata = prepare_package(
                 config=config,
                 output_dir=output_dir,
-                input_path=Path("inputs/target_case_v4_I_survey.py"),
+                input_path=Path("survey/configs/i7plus_fac.py"),
             )
 
             self.assertEqual(metadata["trial_count"], 1022)
@@ -39,7 +39,7 @@ class PrepareI7FullSurveyPackageTests(unittest.TestCase):
             self.assertTrue((output_dir / "run_all.py").exists())
             self.assertTrue((output_dir / "score_known.py").exists())
             self.assertTrue((output_dir / "known.py").exists())
-            self.assertTrue((output_dir / "target_case_v4_I_survey.py").exists())
+            self.assertTrue((output_dir / "i7plus_fac.py").exists())
 
 
 if __name__ == "__main__":

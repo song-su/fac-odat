@@ -27,7 +27,7 @@ from generate_fac_input import build_fac_script
 # ---------------------------------------------------------------------------
 
 # Input config file that defines the configuration space and ion parameters.
-DEFAULT_INPUT = Path("inputs/target_case_v4_I_survey.py")
+DEFAULT_INPUT = Path("survey/configs/i7plus_fac.py")
 
 # Output directory for the generated survey package.
 DEFAULT_OUTPUT = Path("runs/i7_full_fac_survey_package")

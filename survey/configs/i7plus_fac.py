@@ -1,35 +1,83 @@
 #!/usr/bin/env python3
-"""FAC survey configuration for Pd-like I7+ (Z=53).
+"""FAC survey configuration for Pd-like I7+ (Z=53, 46 electrons).
 
-This file defines the FAC-specific survey parameters for I7+:
-  - ION, FAC_INPUT, closed shells
-  - Configuration space (CONFIGURATIONS)
-  - OptimizeRadial strategies to enumerate (OPTIMIZE_RADIAL)
-  - Scoring and loss parameters
-
-It is paired with survey/ions/i7plus.py which holds the code-independent
-physical data (KNOWN_PEAKS, BASE_CONFIG).
+Edit this file to change parameters for an I7+ survey:
+  - KNOWN_PEAKS  : known transitions (exp_nm, paper_fac_nm, config, J) — scoring targets
+  - BASE_CONFIG  : FAC hidden-shell occupancies for config label reconstruction
+  - CONFIGURATIONS : configuration families passed to FAC
+  - OPTIMIZE_RADIAL: hand-picked OptimizeRadial strategy list (survey enumerates all subsets)
+  - ION / FAC_INPUT: atomic and FAC run parameters
 
 Reference: Kimura et al., PRA 102, 032807 (2020).
 """
 
 import re
 
+from survey.peaks import KnownPeak
+
 
 # ---------------------------------------------------------------------------
-# Reference peaks: paper's FAC theoretical wavelengths (Table I, I7+)
-# Labels follow the paper: a,b = E2 (4d-1 5s); d,e = E1 (4d-1 5p);
-# f,g = E1 (4d-1 4f).  Line c (4d-1_5/2 5p3/2, 19.6547 nm) is excluded
-# because the paper's theory shows a large deviation for it.
+# Physical data — edit these when changing ions or reference wavelengths.
 # ---------------------------------------------------------------------------
 
-REFERENCE_PEAKS = [
-    {"wavelength": 26.24, "id": "cal_a_4d9_5s_J2_E2"},   # (4d-1_5/2 5s1/2) J=2
-    {"wavelength": 25.27, "id": "cal_b_4d9_5s_J2_E2"},   # (4d-1_3/2 5s1/2) J=2
-    {"wavelength": 19.45, "id": "cal_d_4d9_5p_J1_E1"},   # (4d-1_3/2 5p1/2) J=1
-    {"wavelength": 19.09, "id": "cal_e_4d9_5p_J1_E1"},   # (4d-1_3/2 5p3/2) J=1
-    {"wavelength": 16.56, "id": "cal_f_4d9_4f_J1_E1"},   # (4d-1_5/2 4f5/2) J=1
-    {"wavelength": 15.77, "id": "cal_g_4d9_4f_J1_E1"},   # (4d-1_3/2 4f5/2) J=1
+# FAC hides shells at block-reference occupancy in short config labels.
+# BASE_CONFIG lets the scorer reconstruct full config strings.
+BASE_CONFIG = {"4p": 6, "4d": 10}
+
+# Known spectral features from Table I (Kimura et al. 2020).
+# exp_nm      : experimental wavelength
+# paper_fac_nm: FAC theoretical wavelength (λ_th) — used as the scoring target
+# upper_config / lower_config / upper_2j / lower_2j : jj-coupling assignment
+# Line c (4d-1_5/2 5p3/2, 19.6547 nm) excluded — large theory/experiment gap.
+KNOWN_PEAKS = [
+    # a: (4d^-1_{5/2} 5s_{1/2})_J=2  E2 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="a_4d9_5s_E2",
+        exp_nm=26.21, paper_fac_nm=26.24,
+        upper_config="4d9.5s1", lower_config="4d10",
+        upper_2j=4, lower_2j=0,
+        multipole="E2", note="(4d-1_5/2 5s_1/2) J=2 -> 4d10",
+    ),
+    # b: (4d^-1_{3/2} 5s_{1/2})_J=2  E2 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="b_4d9_5s_E2",
+        exp_nm=25.27, paper_fac_nm=25.27,
+        upper_config="4d9.5s1", lower_config="4d10",
+        upper_2j=4, lower_2j=0,
+        multipole="E2", note="(4d-1_3/2 5s_1/2) J=2 -> 4d10",
+    ),
+    # d: (4d^-1_{3/2} 5p_{1/2})_J=1  E1 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="d_4d9_5p_E1",
+        exp_nm=19.42, paper_fac_nm=19.45,
+        upper_config="4d9.5p1", lower_config="4d10",
+        upper_2j=2, lower_2j=0,
+        multipole="E1", note="(4d-1_3/2 5p_1/2) J=1 -> 4d10",
+    ),
+    # e: (4d^-1_{3/2} 5p_{3/2})_J=1  E1 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="e_4d9_5p_E1",
+        exp_nm=19.02, paper_fac_nm=19.09,
+        upper_config="4d9.5p1", lower_config="4d10",
+        upper_2j=2, lower_2j=0,
+        multipole="E1", note="(4d-1_3/2 5p_3/2) J=1 -> 4d10",
+    ),
+    # f: (4d^-1_{5/2} 4f_{5/2})_J=1  E1 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="f_4d9_4f_E1",
+        exp_nm=16.44, paper_fac_nm=16.56,
+        upper_config="4d9.4f1", lower_config="4d10",
+        upper_2j=2, lower_2j=0,
+        multipole="E1", note="(4d-1_5/2 4f_5/2) J=1 -> 4d10",
+    ),
+    # g: (4d^-1_{3/2} 4f_{5/2})_J=1  E1 -> 4d10 (J=0)
+    KnownPeak(
+        peak_id="g_4d9_4f_E1",
+        exp_nm=15.71, paper_fac_nm=15.77,
+        upper_config="4d9.4f1", lower_config="4d10",
+        upper_2j=2, lower_2j=0,
+        multipole="E1", note="(4d-1_3/2 4f_5/2) J=1 -> 4d10",
+    ),
 ]
 
 DEFAULT_PEAK = {
@@ -431,7 +479,10 @@ def _fac_potential_file():
 def build_config():
     peak_ids = set()
     template_ids = set()
-    peaks = [_normalize_peak(entry, peak_ids) for entry in REFERENCE_PEAKS]
+    peaks = [
+        _normalize_peak({"wavelength": p.paper_fac_nm, "id": p.peak_id, "unit": "nm"}, peak_ids)
+        for p in KNOWN_PEAKS
+    ]
     templates = [
         _normalize_configuration(entry, index, template_ids)
         for index, entry in enumerate(CONFIGURATIONS)
